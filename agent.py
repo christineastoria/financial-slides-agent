@@ -7,6 +7,7 @@ converts slides to PNG via Playwright, and attaches them to LangSmith traces.
 
 import asyncio
 import base64
+import contextvars
 import os
 
 from dotenv import load_dotenv
@@ -53,21 +54,22 @@ async def html_to_pngs(html: str) -> list[bytes]:
 # SLIDE GENERATION TOOL
 # ============================================================================
 
-# Module-level storage for PNGs from the last generate_slides call
-_last_slide_pngs: list[bytes] = []
+# Per-invocation storage for PNGs — safe under concurrency
+_slide_pngs_var: contextvars.ContextVar[list[bytes]] = contextvars.ContextVar(
+    "_slide_pngs_var", default=[]
+)
 
 
 @tool
 async def generate_slides(html: str) -> str:
     """Render an HTML slide deck to PNG images. Pass the complete self-contained HTML string.
     Returns confirmation with slide count. The slides are stored for attachment to the trace."""
-    global _last_slide_pngs
     try:
         pngs = await html_to_pngs(html)
-        _last_slide_pngs = pngs
+        _slide_pngs_var.set(pngs)
         return f"Successfully rendered {len(pngs)} slide(s) to PNG."
     except Exception as e:
-        _last_slide_pngs = []
+        _slide_pngs_var.set([])
         return f"Error rendering slides: {e}"
 
 
@@ -444,8 +446,7 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
 
     Datadog context is passed via langsmith_extra from the server.
     """
-    global _last_slide_pngs
-    _last_slide_pngs = []
+    _slide_pngs_var.set([])
 
     run_tree = get_current_run_tree()
 
@@ -465,13 +466,14 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
                 break
 
     # Convert PNGs to base64 for the frontend
-    slide_pngs_base64 = [base64.b64encode(png).decode() for png in _last_slide_pngs]
+    slide_pngs = _slide_pngs_var.get()
+    slide_pngs_base64 = [base64.b64encode(png).decode() for png in slide_pngs]
 
     # Attach PNGs to the LangSmith run
-    if run_tree and _last_slide_pngs:
+    if run_tree and slide_pngs:
         run_tree.attachments = {
             f"slide_{i+1}": Attachment(mime_type="image/png", data=png)
-            for i, png in enumerate(_last_slide_pngs)
+            for i, png in enumerate(slide_pngs)
         }
 
     run_id = str(run_tree.id) if run_tree else None
