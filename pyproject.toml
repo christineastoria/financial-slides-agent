@@ -1,0 +1,29 @@
+[project]
+name = "financial-slides-demo"
+version = "0.2.0"
+description = "Financial slide generator with Datadog APM/LLM Observability and LangSmith tracing"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ddtrace>=4.2.0",
+    "deepagents>=0.1.0",
+    "fastapi>=0.128.0",
+    "httpx>=0.28.1",
+    "langchain>=1.2.3",
+    "langchain-anthropic>=1.3.1",
+    "langgraph-cli[inmem]>=0.4.11",
+    "langsmith>=0.6.2",
+    "pandas>=2.0.0",
+    "playwright>=1.52.0",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "pytz>=2025.2",
+    "uvicorn>=0.40.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

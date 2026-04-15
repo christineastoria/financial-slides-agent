@@ -1,0 +1,8 @@
+.env
+.DS_Store
+__pycache__/
+.venv/
+.langgraph_api/
+*.db
+*.pyc
+static/

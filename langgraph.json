@@ -1,0 +1,7 @@
+{
+  "dependencies": ".",
+  "graphs": {
+    "financial_slide_agent": "./agent.py:agent"
+  },
+  "env": ".env"
+}
