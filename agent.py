@@ -85,10 +85,14 @@ def _ensure_sandbox():
     if _sandbox_client is None:
         _sandbox_client = SandboxClient()
     if not _sandbox_template_ready:
-        _sandbox_client.create_template(
-            name="financial-compute",
-            image="python:3.12-slim",
-        )
+        try:
+            _sandbox_client.create_template(
+                name="financial-compute",
+                image="python:3.12-slim",
+            )
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                raise
         _sandbox_template_ready = True
 
 
