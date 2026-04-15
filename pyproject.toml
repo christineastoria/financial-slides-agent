@@ -2,7 +2,7 @@
 name = "financial-slides-demo"
 version = "0.2.0"
 description = "Financial slide generator with Datadog APM/LLM Observability and LangSmith tracing"
-readme = "README.md"
+
 requires-python = ">=3.11"
 dependencies = [
     "ddtrace>=4.2.0",
