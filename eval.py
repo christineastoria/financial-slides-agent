@@ -6,8 +6,7 @@ Three evaluator types:
 2. Trajectory — validates tool call sequence and completeness
 3. Assertions — LLM judge checks per-example goals are met
 
-Runs experiments in a loop, swapping out the agent model each time.
-Uses LangSmith attachments so slide images are viewable in the UI.
+Runs experiments across 4 models with structured metadata for the LangSmith UI.
 
 Usage:
     cd financial-slides
@@ -22,7 +21,8 @@ import uuid
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=True)
 
 from langchain_anthropic import ChatAnthropic
 from langsmith import Client, evaluate, traceable
@@ -32,25 +32,28 @@ from langsmith.schemas import Attachment
 client = Client()
 
 # ---------------------------------------------------------------------------
-# Dataset
+# Dataset — updated for sandbox + enterprise system connectors
 # ---------------------------------------------------------------------------
 
-DATASET_NAME = "Financial Slide Agent Evals"
+DATASET_NAME = "Financial Slide Agent Evals v2"
 
 EXAMPLES = [
     {
         "inputs": {
             "message": (
-                "Create a Q4 2024 Business Review with revenue, gross profit, "
-                "net income metrics and growth trends vs Q3"
+                "Create a Q4 2024 Executive Board Pack with P&L summary, "
+                "revenue trends across regions, SaaS metrics, and 2025 "
+                "quarterly revenue projections calculated using Q1-Q4 growth rates."
             ),
         },
         "outputs": {
             "assertions": [
-                "Slides should contain Q4 2024 revenue figures from the database",
-                "Should show quarter-over-quarter growth trend vs Q3 2024",
-                "Should include a Net Income metric",
-                "Title slide should clearly reference Q4 2024 Business Review",
+                "Slides should contain Q4 2024 revenue and net income from the database",
+                "Should show regional revenue breakdown (North America, EMEA, APAC)",
+                "Should include SaaS metrics (MRR, ARR, churn rate)",
+                "Should include 2025 projected revenue figures computed in the sandbox",
+                "Title slide should reference Q4 2024 Executive Board Pack",
+                "Should pull data from enterprise systems (core banking or treasury)",
             ],
             "expected_trajectory": [
                 "write_todos",
@@ -58,7 +61,11 @@ EXAMPLES = [
                 "list_tables",
                 "describe_table",
                 "query_financials",
-                "query_financials",
+                "query_core_banking_ledger",
+                "fetch_risk_exposure_report",
+                "pull_treasury_positions",
+                "get_regulatory_capital_metrics",
+                "run_financial_calculation",
                 "generate_slides",
             ],
         },
@@ -66,24 +73,30 @@ EXAMPLES = [
     {
         "inputs": {
             "message": (
-                "Create a SaaS Investor Update for Dec 2024 showing MRR, ARR, "
-                "churn rate, and unit economics (CAC, LTV)"
+                "Build a comprehensive Risk & Capital Adequacy dashboard showing "
+                "firm-wide VaR, credit exposure by counterparty tier, Basel III "
+                "capital ratios, and stress test results. Calculate risk-adjusted "
+                "return on capital (RAROC) using the sandbox."
             ),
         },
         "outputs": {
             "assertions": [
-                "Should display MRR for December 2024",
-                "Should include ARR calculation",
-                "Should show CAC and LTV metrics with LTV/CAC ratio",
-                "Should include churn rate trend",
+                "Should display VaR metrics (1-day, 10-day) from the risk platform",
+                "Should show credit exposure broken down by counterparty rating tier",
+                "Should include Basel III capital ratios (CET1, Tier 1, Total Capital)",
+                "Should show DFAST/CCAR stress test scenario results",
+                "Should include a RAROC calculation computed in the sandbox",
+                "Should include risk-weighted asset breakdown",
             ],
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "fetch_risk_exposure_report",
+                "get_regulatory_capital_metrics",
                 "list_tables",
                 "describe_table",
                 "query_financials",
-                "query_financials",
+                "run_financial_calculation",
                 "generate_slides",
             ],
         },
@@ -91,23 +104,28 @@ EXAMPLES = [
     {
         "inputs": {
             "message": (
-                "Create an E-commerce Category Review showing all categories "
-                "by revenue, profit margins, and YoY growth"
+                "Generate a Treasury & Liquidity Overview deck showing global cash "
+                "positions by currency, FX exposure and hedge ratios, investment "
+                "portfolio yields, debt structure with covenant compliance, and "
+                "regulatory liquidity ratios (LCR, NSFR)."
             ),
         },
         "outputs": {
             "assertions": [
-                "Should show Electronics as the highest revenue category",
-                "Should include profit margin percentages per category",
-                "Should display Year-over-Year growth for each category",
-                "Should cover at least 4 product categories",
+                "Should show cash positions across multiple currencies (USD, EUR, GBP, JPY)",
+                "Should display FX exposure with hedge ratios",
+                "Should include investment portfolio with yields and maturities",
+                "Should show debt/funding facilities with utilization rates",
+                "Should include LCR and NSFR regulatory liquidity metrics",
+                "Should show covenant compliance status",
             ],
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
-                "list_tables",
-                "describe_table",
-                "query_financials",
+                "pull_treasury_positions",
+                "get_regulatory_capital_metrics",
+                "query_core_banking_ledger",
+                "run_financial_calculation",
                 "generate_slides",
             ],
         },
@@ -115,25 +133,30 @@ EXAMPLES = [
     {
         "inputs": {
             "message": (
-                "Create a Headcount & Burn Rate analysis showing team growth, "
-                "revenue per employee, monthly burn, and runway"
+                "Create an Investor Update with SaaS unit economics (CAC, LTV, "
+                "LTV/CAC ratio, churn), customer cohort retention analysis, "
+                "e-commerce category performance, and a 12-month forward revenue "
+                "projection using compound monthly growth computed in the sandbox."
             ),
         },
         "outputs": {
             "assertions": [
-                "Should show headcount breakdown by department",
-                "Should include revenue per employee metric",
-                "Should display monthly net burn figures",
-                "Should mention cash runway",
+                "Should display CAC, LTV, and LTV/CAC ratio from SaaS metrics",
+                "Should show customer cohort retention rates",
+                "Should include e-commerce category revenue and margins",
+                "Should include a 12-month forward revenue projection from sandbox",
+                "Should show churn rate trends",
+                "Projection should use compound growth methodology",
             ],
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
                 "list_tables",
                 "describe_table",
-                "describe_table",
                 "query_financials",
                 "query_financials",
+                "query_financials",
+                "run_financial_calculation",
                 "generate_slides",
             ],
         },
@@ -141,41 +164,139 @@ EXAMPLES = [
     {
         "inputs": {
             "message": (
-                "Create a Regional Revenue Breakdown showing performance across "
-                "North America, EMEA, and APAC with customer counts"
+                "Build a Regulatory Compliance & Stress Test deck pulling capital "
+                "metrics from the regulatory system, risk exposures from the risk "
+                "platform, and headcount/burn rate from the database. Use the sandbox "
+                "to model a 200bps interest rate shock impact on our DV01 exposure "
+                "and show resulting capital ratio degradation."
             ),
         },
         "outputs": {
             "assertions": [
-                "Should break down revenue by region (NA, EMEA, APAC)",
-                "Should include customer counts per region",
-                "Should show growth percentages",
-                "North America should show the highest revenue",
+                "Should show Basel III capital ratios from regulatory system",
+                "Should include risk exposure data (VaR, credit exposure)",
+                "Should display headcount and burn rate from database",
+                "Should include a 200bps rate shock scenario calculated in sandbox",
+                "Should show post-shock capital ratio impact",
+                "Should include stress test pass/fail assessment",
             ],
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "get_regulatory_capital_metrics",
+                "fetch_risk_exposure_report",
                 "list_tables",
                 "describe_table",
                 "query_financials",
                 "query_financials",
-                "query_financials",
+                "run_financial_calculation",
                 "generate_slides",
             ],
         },
     },
 ]
 
-# Models to compare
+# ---------------------------------------------------------------------------
+# Models — 4 models to compare
+# ---------------------------------------------------------------------------
+
 MODELS = [
     "claude-sonnet-4-5-20250929",
-    "claude-3-5-haiku-latest",
+    "claude-haiku-4-5-20251001",
+    "claude-sonnet-4-20250514",
+    ("claude-sonnet-4-5-20250929", 0.5),  # same model, higher temperature
+]
+
+# All tools the agent exposes — used in experiment metadata
+TOOL_DEFINITIONS = [
+    {
+        "name": "list_tables",
+        "description": "List all available tables in the financial database",
+    },
+    {
+        "name": "describe_table",
+        "description": "Describe a table's columns and show sample rows",
+        "parameters": {
+            "type": "object",
+            "properties": {"table_name": {"type": "string"}},
+            "required": ["table_name"],
+        },
+    },
+    {
+        "name": "query_financials",
+        "description": "Execute read-only SQL query against the financial database",
+        "parameters": {
+            "type": "object",
+            "properties": {"sql": {"type": "string"}},
+            "required": ["sql"],
+        },
+    },
+    {
+        "name": "run_financial_calculation",
+        "description": "Execute Python code in a secure LangSmith sandbox for financial calculations",
+        "parameters": {
+            "type": "object",
+            "properties": {"python_code": {"type": "string"}},
+            "required": ["python_code"],
+        },
+    },
+    {
+        "name": "query_core_banking_ledger",
+        "description": "Query Oracle Flexcube core banking GL for account balances and loan metrics",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "account_type": {"type": "string", "enum": ["assets", "liabilities", "equity", "all"]},
+                "as_of_date": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "fetch_risk_exposure_report",
+        "description": "Query Murex MX.3 risk platform for VaR, credit exposure, and stress tests",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "portfolio_id": {"type": "string"},
+                "risk_type": {"type": "string", "enum": ["market", "credit", "operational", "liquidity", "all"]},
+            },
+        },
+    },
+    {
+        "name": "pull_treasury_positions",
+        "description": "Query Kyriba TMS for cash positions, FX exposure, investments, and funding",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "currency": {"type": "string"},
+                "position_type": {"type": "string", "enum": ["cash", "fx", "investments", "funding", "all"]},
+            },
+        },
+    },
+    {
+        "name": "get_regulatory_capital_metrics",
+        "description": "Query AxiomSL for Basel III capital adequacy, liquidity ratios, and stress tests",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reporting_period": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "generate_slides",
+        "description": "Render HTML slide deck to PNG images via Playwright",
+        "parameters": {
+            "type": "object",
+            "properties": {"html": {"type": "string"}},
+            "required": ["html"],
+        },
+    },
 ]
 
 
 def ensure_dataset():
     """Create or update the evaluation dataset in LangSmith."""
-    # Delete existing dataset entirely so outputs are fresh
     datasets = list(client.list_datasets(dataset_name=DATASET_NAME))
     if datasets:
         client.delete_dataset(dataset_id=datasets[0].id)
@@ -183,7 +304,7 @@ def ensure_dataset():
 
     ds = client.create_dataset(
         DATASET_NAME,
-        description="Financial slide agent eval examples with per-example assertions",
+        description="Financial slide agent eval — sandbox, enterprise connectors, SQL database",
     )
 
     for e in EXAMPLES:
@@ -193,7 +314,7 @@ def ensure_dataset():
             dataset_id=ds.id,
         )
 
-    print(f"Dataset '{DATASET_NAME}' created with {len(EXAMPLES)} examples (with reference outputs)")
+    print(f"Dataset '{DATASET_NAME}' created with {len(EXAMPLES)} examples")
     return ds
 
 
@@ -201,32 +322,44 @@ def ensure_dataset():
 # Run function (parameterised by model)
 # ---------------------------------------------------------------------------
 
-
-# Module-level storage for PNGs between target and evaluators.
-# Safe because max_concurrency=1 guarantees target→evaluators run sequentially.
 _current_slide_pngs_b64: list[str] = []
 
 
-def make_target(model: str):
+def make_target(model: str, temperature: float = 0):
     """Return a run function that invokes the agent with the given model."""
 
     async def _ainvoke(inputs: dict) -> dict:
         from deepagents import create_deep_agent
         from deepagents.backends import FilesystemBackend
+        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import HumanMessage
         from langgraph.checkpoint.memory import MemorySaver
 
         from db import list_tables, describe_table, query_financials
-        from agent import generate_slides, SYSTEM_PROMPT
+        from agent import (
+            generate_slides,
+            run_financial_calculation,
+            query_core_banking_ledger,
+            fetch_risk_exposure_report,
+            pull_treasury_positions,
+            get_regulatory_capital_metrics,
+            SYSTEM_PROMPT,
+        )
         import agent as agent_module
 
-        # Reset global PNG state before each run
         agent_module._last_slide_pngs = []
+
+        llm = ChatAnthropic(model=model, temperature=temperature) if temperature > 0 else model
 
         eval_agent = create_deep_agent(
             name="financial-slide-agent-eval",
-            model=model,
-            tools=[list_tables, describe_table, query_financials, generate_slides],
+            model=llm,
+            tools=[
+                list_tables, describe_table, query_financials, generate_slides,
+                run_financial_calculation,
+                query_core_banking_ledger, fetch_risk_exposure_report,
+                pull_treasury_positions, get_regulatory_capital_metrics,
+            ],
             system_prompt=SYSTEM_PROMPT,
             backend=FilesystemBackend(root_dir=".", virtual_mode=True),
             skills=["./skills/"],
@@ -248,19 +381,17 @@ def make_target(model: str):
                 for tc in msg.tool_calls:
                     trajectory.append(tc["name"])
 
-        # Extract final text response (last AI message that isn't a tool result)
+        # Extract final text response
         text_response = ""
         for msg in reversed(messages):
             if hasattr(msg, "name"):
-                continue  # skip tool results
+                continue
             if not hasattr(msg, "content"):
                 continue
             content = msg.content
-            # Handle string content
             if isinstance(content, str) and content.strip():
                 text_response = content
                 break
-            # Handle list-of-blocks content (Claude format)
             if isinstance(content, list):
                 text_parts = []
                 for block in content:
@@ -288,10 +419,8 @@ def make_target(model: str):
         global _current_slide_pngs_b64
         result = asyncio.run(_ainvoke(inputs))
 
-        # Stash PNGs for evaluators, remove from outputs to keep them clean
         _current_slide_pngs_b64 = result.pop("slide_pngs_base64", [])
 
-        # Attach PNGs to the LangSmith run so they're viewable in the UI
         rt = get_current_run_tree()
         if rt and _current_slide_pngs_b64:
             rt.attachments = {
@@ -311,12 +440,10 @@ def make_target(model: str):
 # Evaluators
 # ---------------------------------------------------------------------------
 
-# Shared judge model (vision-capable for slide evaluation)
 _judge = ChatAnthropic(model="claude-sonnet-4-5-20250929", max_tokens=1024)
 
 
 # -- 1. Multi-modal: LLM judge on slide images --------------------------------
-
 
 class SlideQualityGrade(BaseModel):
     reasoning: str = Field(description="What you observe in the slides")
@@ -341,7 +468,6 @@ def slide_quality_evaluator(run, example):
     if not pngs_b64:
         return {"score": 0, "comment": "No slides were generated"}
 
-    # Build multi-modal message with slide images for vision evaluation
     content = [
         {
             "type": "text",
@@ -353,7 +479,7 @@ def slide_quality_evaluator(run, example):
             ),
         },
     ]
-    for b64 in pngs_b64[:4]:  # cap at 4 to control cost
+    for b64 in pngs_b64[:4]:
         content.append(
             {
                 "type": "image_url",
@@ -386,15 +512,13 @@ def trajectory_evaluator(run, example):
     if not expected:
         return {"score": 0, "comment": "No reference trajectory in dataset"}
 
-    # 1. Tool set coverage: did we use all the expected tool types?
+    # Tool set coverage
     expected_set = set(expected)
     actual_set = set(actual)
     missing = expected_set - actual_set
-    extra = actual_set - expected_set
     coverage = len(expected_set & actual_set) / len(expected_set) if expected_set else 1.0
 
-    # 2. Order score: longest common subsequence / max length
-    #    Measures whether tools appeared in the right relative order
+    # Order score via LCS
     def lcs_len(a, b):
         m, n = len(a), len(b)
         dp = [[0] * (n + 1) for _ in range(m + 1)]
@@ -409,11 +533,12 @@ def trajectory_evaluator(run, example):
     lcs = lcs_len(actual, expected)
     order_score = lcs / max(len(expected), len(actual)) if (expected or actual) else 1.0
 
-    # 3. Length penalty: penalise trajectories that are way longer or shorter
+    # Length ratio
     len_ratio = min(len(actual), len(expected)) / max(len(actual), len(expected)) if (expected or actual) else 1.0
 
     score = (coverage + order_score + len_ratio) / 3
 
+    extra = actual_set - expected_set
     comment = (
         f"Expected: {' -> '.join(expected)}. "
         f"Actual: {' -> '.join(actual)}. "
@@ -426,7 +551,6 @@ def trajectory_evaluator(run, example):
 
 
 # -- 3. Assertions: LLM judge checks per-example goals ------------------------
-
 
 class AssertionGrade(BaseModel):
     reasoning: str = Field(
@@ -459,7 +583,6 @@ def assertion_evaluator(run, example):
 
     numbered = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(assertions))
 
-    # Build multi-modal message: text prompt + slide images
     content = [
         {
             "type": "text",
@@ -488,23 +611,42 @@ def assertion_evaluator(run, example):
 
 
 # ---------------------------------------------------------------------------
-# Main — run experiments across models
+# Main — run experiments across 4 models with structured metadata
 # ---------------------------------------------------------------------------
-
 
 def main():
     ensure_dataset()
 
-    for model in MODELS:
-        short = model.split("-")[1]  # "sonnet" or "haiku"
+    for entry in MODELS:
+        if isinstance(entry, tuple):
+            model, temperature = entry
+        else:
+            model, temperature = entry, 0
+
+        short = model.replace("claude-", "").replace("-20250929", "").replace("-20250514", "").replace("-20251001", "")
+        if temperature > 0:
+            short += f"-t{temperature}"
         prefix = f"slide-agent-{short}"
 
+        experiment_metadata = {
+            "models": [
+                {
+                    "id": ["langchain", "chat_models", "anthropic", "ChatAnthropic"],
+                    "lc": 1,
+                    "type": "constructor",
+                    "kwargs": {"model_name": model, "temperature": temperature},
+                },
+            ],
+            "prompts": ["financial-slide-agent/system-prompt:v2"],
+            "tools": TOOL_DEFINITIONS,
+        }
+
         print(f"\n{'=' * 60}")
-        print(f"Experiment: {prefix}  (model={model})")
+        print(f"Experiment: {prefix}  (model={model}, temp={temperature})")
         print(f"{'=' * 60}\n")
 
         evaluate(
-            make_target(model),
+            make_target(model, temperature),
             data=DATASET_NAME,
             evaluators=[
                 slide_quality_evaluator,
@@ -512,8 +654,9 @@ def main():
                 assertion_evaluator,
             ],
             experiment_prefix=prefix,
-            metadata={"model": model},
-            max_concurrency=1,  # sequential — avoids global PNG state conflicts
+            description=f"Financial slide agent eval — {model} (temp={temperature})",
+            metadata=experiment_metadata,
+            max_concurrency=1,
         )
 
     print("\nAll experiments complete. View results in LangSmith.")
