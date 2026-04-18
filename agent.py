@@ -12,7 +12,7 @@ import os
 from dotenv import load_dotenv
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langsmith import traceable
@@ -454,15 +454,15 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
         config={"configurable": {"thread_id": thread_id}},
     )
 
-    # Extract text response from last AI message
+    # Extract text response from last AI message.
+    # Use isinstance(AIMessage) — hasattr(msg, "name") is True for AIMessage too,
+    # so the old check skipped real AI content and always returned the default.
     messages = result.get("messages", [])
     text_summary = "Slide deck generated successfully."
     for msg in reversed(messages):
-        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip():
-            # Skip tool results — find the last AI text
-            if not hasattr(msg, "name"):
-                text_summary = msg.content
-                break
+        if isinstance(msg, AIMessage) and isinstance(msg.content, str) and msg.content.strip():
+            text_summary = msg.content
+            break
 
     # Convert PNGs to base64 for the frontend
     slide_pngs_base64 = [base64.b64encode(png).decode() for png in _last_slide_pngs]
