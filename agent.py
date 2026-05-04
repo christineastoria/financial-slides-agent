@@ -7,7 +7,6 @@ converts slides to PNG via Playwright, and attaches them to LangSmith traces.
 
 import asyncio
 import base64
-import json
 import os
 
 from dotenv import load_dotenv
@@ -54,15 +53,21 @@ async def html_to_pngs(html: str) -> list[bytes]:
 # SLIDE GENERATION TOOL
 # ============================================================================
 
+# Module-level storage for PNGs from the last generate_slides call
+_last_slide_pngs: list[bytes] = []
+
+
 @tool
 async def generate_slides(html: str) -> str:
     """Render an HTML slide deck to PNG images. Pass the complete self-contained HTML string.
-    Returns confirmation with slide count and base64-encoded PNGs in JSON."""
+    Returns confirmation with slide count. The slides are stored for attachment to the trace."""
+    global _last_slide_pngs
     try:
         pngs = await html_to_pngs(html)
-        pngs_b64 = [base64.b64encode(png).decode() for png in pngs]
-        return json.dumps({"message": f"Successfully rendered {len(pngs)} slide(s) to PNG.", "slide_pngs_base64": pngs_b64})
+        _last_slide_pngs = pngs
+        return f"Successfully rendered {len(pngs)} slide(s) to PNG."
     except Exception as e:
+        _last_slide_pngs = []
         return f"Error rendering slides: {e}"
 
 
@@ -439,6 +444,9 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
 
     Datadog context is passed via langsmith_extra from the server.
     """
+    global _last_slide_pngs
+    _last_slide_pngs = []
+
     run_tree = get_current_run_tree()
 
     result = await agent.ainvoke(
@@ -456,25 +464,14 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
                 text_summary = msg.content
                 break
 
-    # Extract PNGs from the generate_slides tool message in the conversation
-    # (no longer uses a shared global — safe for concurrent requests)
-    slide_pngs_base64 = []
-    slide_pngs_raw = []
-    for msg in reversed(messages):
-        if hasattr(msg, "name") and msg.name == "generate_slides":
-            try:
-                data = json.loads(msg.content)
-                slide_pngs_base64 = data.get("slide_pngs_base64", [])
-                slide_pngs_raw = [base64.b64decode(b64) for b64 in slide_pngs_base64]
-            except (json.JSONDecodeError, AttributeError):
-                pass
-            break
+    # Convert PNGs to base64 for the frontend
+    slide_pngs_base64 = [base64.b64encode(png).decode() for png in _last_slide_pngs]
 
     # Attach PNGs to the LangSmith run
-    if run_tree and slide_pngs_raw:
+    if run_tree and _last_slide_pngs:
         run_tree.attachments = {
             f"slide_{i+1}": Attachment(mime_type="image/png", data=png)
-            for i, png in enumerate(slide_pngs_raw)
+            for i, png in enumerate(_last_slide_pngs)
         }
 
     run_id = str(run_tree.id) if run_tree else None
