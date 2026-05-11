@@ -19,21 +19,34 @@ echo -e "${BLUE}  Datadog APM + LLM Obs + LangSmith         ${NC}"
 echo -e "${BLUE}=============================================${NC}"
 echo ""
 
-# Load environment from parent directory
-if [ -f "../.env" ]; then
+# Ensure Datadog agent container is running
+if docker ps --format '{{.Names}}' | grep -q dd-agent; then
+    echo -e "${GREEN}Datadog agent container is running${NC}"
+elif docker ps -a --format '{{.Names}}' | grep -q dd-agent; then
+    echo -e "${YELLOW}Starting Datadog agent container...${NC}"
+    docker start dd-agent
+else
+    echo -e "${YELLOW}No dd-agent container found — Datadog tracing will not work${NC}"
+    echo "See env.example for the docker run command to create it."
+fi
+echo ""
+
+# Load environment
+if [ -f ".env" ]; then
+    echo -e "${GREEN}Loading environment from .env${NC}"
+    set -a
+    source .env
+    set +a
+elif [ -f "../.env" ]; then
     echo -e "${GREEN}Loading environment from ../.env${NC}"
     set -a
     source ../.env
     set +a
 else
-    echo -e "${RED}Error: ../.env not found!${NC}"
-    echo "Configure your API keys in the parent directory's .env file."
+    echo -e "${RED}Error: .env not found!${NC}"
+    echo "Configure your API keys: cp env.example .env"
     exit 1
 fi
-
-# Override service name for this demo
-export DD_SERVICE=financial-slide-agent-demo
-export DD_LLMOBS_ML_APP=financial-slide-agent-demo
 
 # Ensure Playwright browsers are installed (for HTML -> PNG conversion)
 echo -e "${YELLOW}Checking Playwright browsers...${NC}"
@@ -76,8 +89,7 @@ if [ "$USE_DDTRACE" = true ]; then
     echo ""
     uv run ddtrace-run uvicorn server:app \
         --host 0.0.0.0 \
-        --port 8001 \
-        --reload
+        --port 8001
 else
     echo -e "${YELLOW}Running without Datadog tracing...${NC}"
     echo ""

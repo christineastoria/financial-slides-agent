@@ -1,0 +1,48 @@
+MERIDIAN FINANCIAL GROUP — Q4 2024 EARNINGS REPORT
+Released: January 28, 2025
+Prepared by: Office of the CFO
+
+EXECUTIVE SUMMARY
+
+Meridian Financial Group delivered record results in Q4 2024, driven by strong
+loan origination volumes, disciplined cost management, and continued expansion
+in our wealth management division. Total revenue reached $3.45B for the quarter,
+representing 11.3% growth over Q3 2024 and 38% year-over-year growth.
+
+Net income of $850M exceeded analyst consensus of $780M, reflecting a net margin
+of 24.6% — our highest quarterly margin since inception. This improvement was
+primarily driven by operating leverage as revenue scaled faster than headcount
+growth (12% vs 65 FTEs added in Q4).
+
+KEY HIGHLIGHTS
+
+- Revenue: $3.45M quarterly, $11.8M full-year 2024
+- Net Income: $850K quarterly, $2.4M full-year 2024
+- Customer base expanded to 1,750 (+15.1% QoQ)
+- Gross margin improved to 46.4%, up from 43.5% in Q3
+- MRR reached $165K in December, representing $1.98M ARR
+- LTV/CAC ratio improved to 15.9x, up from 12.9x in November
+- Churn rate declined to 1.9%, lowest in company history
+
+REGIONAL PERFORMANCE
+
+North America remains our largest market at $2.07M in Q4 revenue (60% of total),
+growing 11.3% quarter-over-quarter. EMEA contributed $897K (26%) with strong
+traction in the UK and Germany. APAC delivered $483K (14%) with accelerating
+growth in Singapore and Australia.
+
+FORWARD GUIDANCE
+
+Management is guiding for Q1 2025 revenue of $3.8-4.0M, representing 10-16%
+sequential growth. We expect continued margin expansion as our platform scales.
+Key investments planned for 2025 include:
+- Expansion into Latin American markets (target: Q2 2025 launch)
+- AI-powered risk analytics platform (beta: Q3 2025)
+- Regulatory technology suite for Basel IV compliance
+
+RISK FACTORS
+
+- Rising interest rate environment may pressure loan demand in H2 2025
+- Regulatory uncertainty around Basel IV implementation timelines
+- Competitive pressure from fintech entrants in the SMB lending segment
+- FX headwinds expected to impact EMEA margins by 50-80bps

@@ -27,6 +27,63 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=True
 # Import database tools
 from db import list_tables, describe_table, query_financials
 
+# ============================================================================
+# SOURCE DOCUMENT RETRIEVER
+# ============================================================================
+
+SOURCES_DIR = os.path.join(os.path.dirname(__file__), "sources")
+
+# Module-level storage for source docs read during the current invocation
+_last_source_docs: dict[str, str] = {}
+
+
+def _convert_docs(files_content: list[tuple[str, str, str]]) -> list[dict]:
+    """Convert file data to LangSmith Document format (plain dicts)."""
+    return [
+        {
+            "page_content": content,
+            "type": "Document",
+            "metadata": {"source": filename, "path": path},
+        }
+        for filename, path, content in files_content
+    ]
+
+
+@traceable(run_type="retriever", name="source_document_retriever")
+def _retrieve_docs(query: str) -> list[dict]:
+    """Retriever that loads all .txt source documents. Traced as a retriever
+    in LangSmith so documents render with the dedicated document viewer."""
+    files = sorted(f for f in os.listdir(SOURCES_DIR) if f.endswith(".txt"))
+    files_content = []
+    for filename in files:
+        path = os.path.join(SOURCES_DIR, filename)
+        with open(path, "r") as f:
+            content = f.read()
+        _last_source_docs[filename] = content
+        files_content.append((filename, path, content))
+    return _convert_docs(files_content)
+
+
+@tool
+def retrieve_source_documents(query: str) -> str:
+    """Retrieve all .txt source documents from the sources directory.
+    These are primary reference materials — earnings reports, risk committee
+    minutes, treasury strategy memos — that provide authoritative context
+    for building financial slides.
+
+    ALWAYS call this tool before querying other data sources.
+
+    Args:
+        query: A brief description of what you're looking for (e.g. 'Q4 2024 financial data')
+    """
+    docs = _retrieve_docs(query)
+    if not docs:
+        return "No source documents found."
+    parts = []
+    for doc in docs:
+        parts.append(f"=== {doc['metadata']['source']} ===\n{doc['page_content']}")
+    return "\n\n".join(parts)
+
 
 # ============================================================================
 # HTML → PNG CONVERSION
@@ -385,13 +442,14 @@ IMPORTANT: At the start of every request, use the write_todos tool to create a p
 WORKFLOW:
 1. Create a plan using write_todos with the steps you'll take
 2. Load the "langchain-brand-slides" skill to get the design system and templates
-3. Query financial data sources — use BOTH the SQL database AND the enterprise system connectors:
+3. ALWAYS call retrieve_source_documents first — this retrieves all .txt source documents (earnings reports, risk committee minutes, strategy memos) that provide authoritative context for the slides.
+4. Query financial data sources — use BOTH the SQL database AND the enterprise system connectors:
    - SQL Database: use list_tables, describe_table, query_financials for internal metrics
    - Core Banking: use query_core_banking_ledger for GL balances and loan portfolio data
    - Risk Platform: use fetch_risk_exposure_report for VaR, credit exposure, stress tests
    - Treasury: use pull_treasury_positions for cash positions, FX, investments, and funding
    - Regulatory: use get_regulatory_capital_metrics for capital ratios and compliance
-4. For any calculations, projections, or financial modeling, use run_financial_calculation to execute Python code in a secure sandbox. Examples:
+5. For any calculations, projections, or financial modeling, use run_financial_calculation to execute Python code in a secure sandbox. Examples:
    - Revenue growth projections and CAGR calculations
    - DCF models and NPV analysis
    - Monte Carlo simulations for risk scenarios
@@ -399,15 +457,16 @@ WORKFLOW:
    - Ratio analysis (debt/equity, current ratio, ROE, etc.)
    - Amortization schedules and interest calculations
    Do NOT do complex math in your head — always use the sandbox.
-5. Build a complete self-contained HTML slide deck following the skill's design rules
-6. Call generate_slides with the full HTML string to render it to PNG images
-7. Write a 2-3 sentence summary of the key financial highlights shown in the deck
+6. Build a complete self-contained HTML slide deck following the skill's design rules
+7. Call generate_slides with the full HTML string to render it to PNG images
+8. Write a 2-3 sentence summary of the key financial highlights shown in the deck
 
 Mark each todo as completed as you finish it.
 
 RULES:
 - Always create a plan with write_todos FIRST
 - Always load the skill first to get the latest design templates
+- ALWAYS call retrieve_source_documents before querying other data sources — this is mandatory
 - Always query the database AND enterprise systems — do not make up financial numbers
 - Use run_financial_calculation for any non-trivial math — projections, compound growth, scenario modeling
 - Be thorough: pull data from ALL relevant tables and enterprise systems
@@ -424,6 +483,7 @@ agent = create_deep_agent(
     name="financial-slide-agent",
     model="claude-sonnet-4-5-20250929",
     tools=[
+        retrieve_source_documents,
         list_tables, describe_table, query_financials, generate_slides,
         run_financial_calculation,
         query_core_banking_ledger, fetch_risk_exposure_report,
@@ -443,12 +503,13 @@ agent = create_deep_agent(
 @traceable(name="financial_slide_agent")
 async def invoke_agent(message: str, thread_id: str = "default") -> dict:
     """
-    Invoke the Deep Agent, attach PNGs to the LangSmith trace.
+    Invoke the Deep Agent, attach PNGs and source docs to the LangSmith trace.
 
     Datadog context is passed via langsmith_extra from the server.
     """
     global _last_slide_pngs
     _last_slide_pngs = []
+    _last_source_docs.clear()
 
     run_tree = get_current_run_tree()
 
@@ -470,12 +531,18 @@ async def invoke_agent(message: str, thread_id: str = "default") -> dict:
     # Convert PNGs to base64 for the frontend
     slide_pngs_base64 = [base64.b64encode(png).decode() for png in _last_slide_pngs]
 
-    # Attach PNGs to the LangSmith run
-    if run_tree and _last_slide_pngs:
-        run_tree.attachments = {
-            f"slide_{i+1}": Attachment(mime_type="image/png", data=png)
-            for i, png in enumerate(_last_slide_pngs)
-        }
+    # Attach PNGs and source documents to the LangSmith run
+    if run_tree:
+        attachments = {}
+        for i, png in enumerate(_last_slide_pngs):
+            attachments[f"slide_{i+1}"] = Attachment(mime_type="image/png", data=png)
+        for filename, content in _last_source_docs.items():
+            safe_name = filename.replace(".", "_")
+            attachments[f"source_{safe_name}"] = Attachment(
+                mime_type="text/plain", data=content.encode()
+            )
+        if attachments:
+            run_tree.attachments = attachments
 
     run_id = str(run_tree.id) if run_tree else None
 

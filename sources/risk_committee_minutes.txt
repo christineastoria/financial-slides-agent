@@ -1,0 +1,64 @@
+MERIDIAN FINANCIAL GROUP — RISK COMMITTEE MEETING MINUTES
+Date: January 15, 2025
+Attendees: CRO, CFO, Head of Trading, Head of Credit, Head of Compliance
+
+AGENDA ITEM 1: MARKET RISK UPDATE
+
+The Head of Trading presented the firm-wide VaR report. Key observations:
+
+- 1-day VaR (99%) stands at $4.2M, well within the $20M board-approved limit
+  (66.5% utilization). The 10-day VaR of $13.3M provides adequate buffer.
+- Expected Shortfall (CVaR) at $6.8M daily reflects manageable tail risk.
+- Interest Rate DV01 exposure of $285K is within the $500K limit (57% utilized).
+- FX Delta exposure of $1.8M against a $5.0M limit (36%) is conservative given
+  current currency volatility.
+- Stressed VaR of $9.1M (1-day) represents the 2008-crisis scenario replay.
+
+COMMITTEE DECISION: Market risk limits remain appropriate. No changes recommended.
+
+AGENDA ITEM 2: CREDIT RISK REVIEW
+
+The Head of Credit reviewed the counterparty exposure report:
+
+- Investment Grade (A+ and above) exposure: $245M with $198M collateral posted.
+  Net exposure of $46.8M is well-managed.
+- BBB-rated counterparties: $187.3M exposure, $142.1M collateral. PD of 0.24%
+  is within tolerance.
+- High Yield (BB/B) combined exposure: $90.5M. This warrants monitoring —
+  particularly the B-rated segment where PD is 3.45%.
+- Distressed (CCC-): $8.7M exposure with 12.8% PD. The committee noted this is
+  legacy exposure being wound down. Target: reduce to <$5M by Q2 2025.
+
+CONCERN RAISED: Largest single-name exposure to Meridian Capital Corp at $18.4M
+(3.5% of portfolio) exceeds the 3% soft limit. CRO to engage relationship team
+on collateral top-up or partial risk transfer.
+
+COMMITTEE DECISION: Approve $2M increase in ECL provision (total: $3.42M).
+Initiate review of Meridian Capital Corp exposure within 30 days.
+
+AGENDA ITEM 3: OPERATIONAL RISK
+
+- Incident count (QTD): 23 events — 2 High, 8 Medium, 13 Low severity.
+- Manual overrides at 847 against 1,000 limit (AMBER status). Process automation
+  initiative underway to address.
+- Data quality exceptions at 156 against 200 limit (AMBER). Root cause: legacy
+  system migration in the settlements platform.
+- System downtime: 0.12% (target: <0.5%) — GREEN.
+
+COMMITTEE DECISION: Escalate manual override trend to COO. Request remediation
+plan for data quality exceptions by February 15, 2025.
+
+AGENDA ITEM 4: REGULATORY CAPITAL
+
+- CET1 ratio: 14.2% (minimum 4.5%, buffer 9.7%) — PASS
+- Total Capital ratio: 18.1% (minimum 8.0%) — PASS
+- Leverage ratio: 6.9% (minimum 3.0%) — PASS
+- DFAST Severely Adverse scenario: CET1 minimum of 8.9%, well above 4.5% floor.
+
+The committee noted one overdue regulatory finding (Medium severity) related to
+data lineage documentation. Remediation is in progress with expected completion
+by March 2025.
+
+COMMITTEE DECISION: Capital position is strong. No action required.
+
+NEXT MEETING: February 12, 2025

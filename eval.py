@@ -1,10 +1,16 @@
 """
 Offline evaluations for the Financial Slide Agent.
 
-Three evaluator types:
-1. Multi-modal — LLM judge evaluates rendered slide PNGs (via attachments)
-2. Trajectory — validates tool call sequence and completeness
-3. Assertions — LLM judge checks per-example goals are met
+Nine evaluator types:
+1. Slide quality        — generic LLM judge on data presence, readability, polish (first-pass catch-all)
+2. Trajectory           — validates tool call sequence and completeness
+3. Assertions           — LLM judge checks per-example goals are met
+4. Overflow/overlap     — detects text clipping, element collisions, content outside slide bounds
+5. Chart accuracy       — verifies chart proportions match data (pie slices, bar heights, trend arrows)
+6. Data integrity       — checks numbers are consistent, correctly formatted, and not fabricated
+7. Readability          — font sizes, contrast, visual hierarchy, color-blind accessibility
+8. Regulatory           — date labeling, source attribution, no misleading presentation, consistent formatting
+9. Golden slide compare — compares generated slides against golden reference images stored as dataset attachments
 
 Runs experiments across 4 models with structured metadata for the LangSmith UI.
 
@@ -24,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=True)
 
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langsmith import Client, evaluate, traceable
 from langsmith.run_helpers import get_current_run_tree
 from langsmith.schemas import Attachment
@@ -58,6 +64,7 @@ EXAMPLES = [
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "retrieve_source_documents",
                 "list_tables",
                 "describe_table",
                 "query_financials",
@@ -91,6 +98,7 @@ EXAMPLES = [
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "retrieve_source_documents",
                 "fetch_risk_exposure_report",
                 "get_regulatory_capital_metrics",
                 "list_tables",
@@ -99,6 +107,7 @@ EXAMPLES = [
                 "run_financial_calculation",
                 "generate_slides",
             ],
+            "has_golden_slides": True,
         },
     },
     {
@@ -122,6 +131,7 @@ EXAMPLES = [
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "retrieve_source_documents",
                 "pull_treasury_positions",
                 "get_regulatory_capital_metrics",
                 "query_core_banking_ledger",
@@ -151,6 +161,7 @@ EXAMPLES = [
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "retrieve_source_documents",
                 "list_tables",
                 "describe_table",
                 "query_financials",
@@ -183,6 +194,7 @@ EXAMPLES = [
             "expected_trajectory": [
                 "write_todos",
                 "load_skill",
+                "retrieve_source_documents",
                 "get_regulatory_capital_metrics",
                 "fetch_risk_exposure_report",
                 "list_tables",
@@ -209,6 +221,15 @@ MODELS = [
 
 # All tools the agent exposes — used in experiment metadata
 TOOL_DEFINITIONS = [
+    {
+        "name": "retrieve_source_documents",
+        "description": "Retrieve all .txt source documents from the sources directory. Traced as a retriever in LangSmith.",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    },
     {
         "name": "list_tables",
         "description": "List all available tables in the financial database",
@@ -295,6 +316,20 @@ TOOL_DEFINITIONS = [
 ]
 
 
+GOLDEN_SLIDES_DIR = os.path.join(os.path.dirname(__file__), "tmp")
+
+
+def _load_golden_slides() -> dict[str, tuple[str, bytes]]:
+    """Load golden reference PNGs from tmp/ as LangSmith attachments."""
+    attachments = {}
+    for f in sorted(os.listdir(GOLDEN_SLIDES_DIR)):
+        if f.startswith("golden_slide_") and f.endswith(".png"):
+            path = os.path.join(GOLDEN_SLIDES_DIR, f)
+            with open(path, "rb") as fh:
+                attachments[f.replace(".png", "")] = ("image/png", fh.read())
+    return attachments
+
+
 def ensure_dataset():
     """Create or update the evaluation dataset in LangSmith."""
     datasets = list(client.list_datasets(dataset_name=DATASET_NAME))
@@ -307,11 +342,19 @@ def ensure_dataset():
         description="Financial slide agent eval — sandbox, enterprise connectors, SQL database",
     )
 
+    golden_attachments = _load_golden_slides()
+    print(f"Loaded {len(golden_attachments)} golden reference slides as attachments")
+
     for e in EXAMPLES:
+        attachments = None
+        if e["outputs"].get("has_golden_slides") and golden_attachments:
+            attachments = golden_attachments
+
         client.create_example(
             inputs=e["inputs"],
             outputs=e["outputs"],
             dataset_id=ds.id,
+            attachments=attachments,
         )
 
     print(f"Dataset '{DATASET_NAME}' created with {len(EXAMPLES)} examples")
@@ -337,6 +380,7 @@ def make_target(model: str, temperature: float = 0):
 
         from db import list_tables, describe_table, query_financials
         from agent import (
+            retrieve_source_documents,
             generate_slides,
             run_financial_calculation,
             query_core_banking_ledger,
@@ -355,6 +399,7 @@ def make_target(model: str, temperature: float = 0):
             name="financial-slide-agent-eval",
             model=llm,
             tools=[
+                retrieve_source_documents,
                 list_tables, describe_table, query_financials, generate_slides,
                 run_financial_calculation,
                 query_core_banking_ledger, fetch_risk_exposure_report,
@@ -440,7 +485,7 @@ def make_target(model: str, temperature: float = 0):
 # Evaluators
 # ---------------------------------------------------------------------------
 
-_judge = ChatAnthropic(model="claude-sonnet-4-5-20250929", max_tokens=1024)
+_judge = ChatOpenAI(model="gpt-4.1", max_tokens=1024)
 
 
 # -- 1. Multi-modal: LLM judge on slide images --------------------------------
@@ -610,6 +655,433 @@ def assertion_evaluator(run, example):
     return {"score": grade.fraction_met, "comment": grade.reasoning}
 
 
+# -- 4. Visual: content overlap / overflow ------------------------------------
+
+class OverflowOverlapGrade(BaseModel):
+    reasoning: str = Field(description="Describe every overlap or overflow issue found, or state that none were found")
+    text_clipped: bool = Field(
+        description="True if any text is visually cut off at slide edges or card boundaries"
+    )
+    elements_overlapping: bool = Field(
+        description="True if any elements (cards, text, charts) overlap each other in a way that obscures content"
+    )
+    content_outside_bounds: bool = Field(
+        description="True if any content extends beyond the visible slide area (1280x720)"
+    )
+    whitespace_balanced: bool = Field(
+        description="True if spacing between elements is roughly even — no cramped or empty regions"
+    )
+
+
+_overflow_judge = _judge.with_structured_output(OverflowOverlapGrade)
+
+
+def overflow_overlap_evaluator(run, example):
+    """Visual eval: detect text clipping, element overlap, and content outside slide bounds."""
+    pngs_b64 = _current_slide_pngs_b64
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are a QA engineer reviewing financial presentation slides for a bank.\n"
+                "Each slide is exactly 1280x720 pixels. Carefully inspect EVERY slide for:\n\n"
+                "1. TEXT CLIPPING: Is any text cut off at the edge of a slide or card? "
+                "Look at the bottom and right edges especially — long metric values, titles, "
+                "or trend labels that extend past their container.\n"
+                "2. ELEMENT OVERLAP: Do any cards, text blocks, or chart elements overlap each other "
+                "in a way that makes content unreadable? Check metric grids where cards might collide.\n"
+                "3. CONTENT OUTSIDE BOUNDS: Is any content partially or fully outside the visible slide area? "
+                "Check for elements that appear to be pushed off-screen.\n"
+                "4. WHITESPACE BALANCE: Is spacing roughly even? Flag slides where elements are crammed "
+                "together in one area but large empty gaps exist elsewhere.\n\n"
+                "Be strict — in banking presentations, even minor visual defects undermine credibility."
+            ),
+        },
+    ]
+    for b64 in pngs_b64[:6]:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _overflow_judge.invoke([{"role": "user", "content": content}])
+    defects = sum([
+        grade.text_clipped,
+        grade.elements_overlapping,
+        grade.content_outside_bounds,
+        not grade.whitespace_balanced,
+    ])
+    score = 1.0 - (defects / 4)
+    return {"score": score, "comment": grade.reasoning}
+
+
+# -- 5. Visual: chart proportionality / accuracy -------------------------------
+
+class ChartAccuracyGrade(BaseModel):
+    reasoning: str = Field(
+        description="For each chart or visual data representation found, describe whether "
+        "its visual proportions match the numbers shown. If no charts are present, state that."
+    )
+    charts_found: int = Field(description="Number of charts or visual data representations found across all slides")
+    proportions_accurate: bool = Field(
+        description="True if all chart segments, bars, or visual areas are proportional to the data values they represent. "
+        "For example, a pie chart with 40% should take up roughly 40% of the circle; "
+        "a bar at $3.4M should be roughly 2x a bar at $1.7M."
+    )
+    labels_match_visuals: bool = Field(
+        description="True if every data label/number next to a chart element matches what the visual shows. "
+        "No bar labeled $1M that is taller than a bar labeled $3M."
+    )
+    axes_correct: bool = Field(
+        description="True if chart axes (where present) have correct scale, direction, and labels. "
+        "Y-axis should increase upward, time axes left-to-right, no missing units."
+    )
+
+
+_chart_judge = _judge.with_structured_output(ChartAccuracyGrade)
+
+
+def chart_accuracy_evaluator(run, example):
+    """Visual eval: check chart proportionality and data-to-visual accuracy."""
+    pngs_b64 = _current_slide_pngs_b64
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are a data visualization auditor for a bank. Examine these financial slides.\n\n"
+                "For EVERY chart, graph, pie chart, bar chart, or visual data representation:\n\n"
+                "1. PROPORTIONALITY: Do the visual sizes match the data? A segment labeled 40% should "
+                "take up ~40% of the total area. A bar for $3.4M should be ~2x taller than one for $1.7M. "
+                "CSS-styled metric cards with colored bars or progress indicators count too.\n"
+                "2. LABEL-VISUAL MATCH: Does every number next to a visual element match what the visual shows? "
+                "A green up-arrow next to a negative number is wrong. A bar labeled $1M that appears taller "
+                "than a bar labeled $3M is wrong.\n"
+                "3. AXES: If axes are present, are they correctly scaled? Y-axis increasing upward, time going "
+                "left-to-right, units labeled, no misleading truncated axes.\n\n"
+                "If no charts/graphs are present (only metric cards with text), note that and check that "
+                "trend indicators (up/down arrows, green/red colors) correctly match the sign of the "
+                "percentage changes shown.\n\n"
+                "Be precise — in financial presentations, a misleading chart can cause regulatory issues."
+            ),
+        },
+    ]
+    for b64 in pngs_b64[:6]:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _chart_judge.invoke([{"role": "user", "content": content}])
+
+    if grade.charts_found == 0:
+        checks = [grade.labels_match_visuals]
+    else:
+        checks = [grade.proportions_accurate, grade.labels_match_visuals, grade.axes_correct]
+    score = sum(checks) / len(checks)
+    return {
+        "score": score,
+        "comment": f"Charts found: {grade.charts_found}. {grade.reasoning}",
+    }
+
+
+# -- 6. Financial data integrity: numbers match source data --------------------
+
+class DataIntegrityGrade(BaseModel):
+    reasoning: str = Field(
+        description="For each financial figure on the slides, state whether it appears "
+        "consistent with the agent's text summary and whether any numbers look fabricated, "
+        "transposed, or contradictory."
+    )
+    numbers_consistent: bool = Field(
+        description="True if the financial figures shown on slides are internally consistent "
+        "(e.g., Gross Profit = Revenue - COGS, percentages add to 100% where expected)"
+    )
+    no_fabricated_data: bool = Field(
+        description="True if all numbers appear to be real query results, not round placeholder values "
+        "like $1,000,000 or $100K that look made up"
+    )
+    units_correct: bool = Field(
+        description="True if all values have correct units ($ for currency, % for percentages, "
+        "bps for basis points) and magnitudes make sense (no $3.4 when $3.4M is meant)"
+    )
+    trends_directionally_correct: bool = Field(
+        description="True if trend indicators (up/down, green/red, +/-) match the direction "
+        "of the actual change. A positive change should never show a red down arrow."
+    )
+
+
+_data_integrity_judge = _judge.with_structured_output(DataIntegrityGrade)
+
+
+def data_integrity_evaluator(run, example):
+    """Visual eval: verify financial numbers are consistent, correctly formatted, and not fabricated."""
+    pngs_b64 = _current_slide_pngs_b64
+    outputs = run.outputs if hasattr(run, "outputs") else run.get("outputs", {}) or {}
+    response = outputs.get("response", "")
+
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are a financial controller auditing presentation slides before they go to the board.\n\n"
+                f"The agent's text summary was:\n---\n{response[:2000]}\n---\n\n"
+                "Now examine the slide images and check:\n\n"
+                "1. INTERNAL CONSISTENCY: Do the numbers add up? If Revenue is $3.4M and COGS is $1.85M, "
+                "then Gross Profit should be ~$1.55M. If a pie chart has 5 segments, they should sum to 100%. "
+                "If Q3 Revenue was $3.1M and Q4 is $3.45M, the QoQ growth should be ~11.3%, not some other number.\n"
+                "2. NO FABRICATED DATA: Are any numbers suspiciously round or generic-looking? "
+                "Real financial data rarely has values like exactly $1,000,000 or $500K. "
+                "Look for placeholder-like figures that suggest the agent made up numbers.\n"
+                "3. CORRECT UNITS: Every currency value should have $ (or appropriate symbol), "
+                "every percentage should have %, basis points should use bps. "
+                "Check that magnitudes are sensible — $3.4M and $3,400,000 are fine, $3.4 alone is suspicious.\n"
+                "4. TREND DIRECTION: If a metric went up, the trend indicator should be green/up/positive. "
+                "If it went down, red/down/negative. Check every single trend indicator against its number."
+            ),
+        },
+    ]
+    for b64 in pngs_b64[:6]:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _data_integrity_judge.invoke([{"role": "user", "content": content}])
+    checks = [
+        grade.numbers_consistent,
+        grade.no_fabricated_data,
+        grade.units_correct,
+        grade.trends_directionally_correct,
+    ]
+    score = sum(checks) / len(checks)
+    return {"score": score, "comment": grade.reasoning}
+
+
+# -- 7. Readability & accessibility for financial content ----------------------
+
+class ReadabilityGrade(BaseModel):
+    reasoning: str = Field(description="Describe any readability or accessibility issues found")
+    font_sizes_adequate: bool = Field(
+        description="True if all text is large enough to read comfortably when projected. "
+        "No text smaller than ~10px equivalent. Metric values should be prominent."
+    )
+    contrast_sufficient: bool = Field(
+        description="True if all text has sufficient contrast against its background. "
+        "No light gray text on white, no light blue on light blue."
+    )
+    hierarchy_clear: bool = Field(
+        description="True if visual hierarchy is clear — titles are largest, "
+        "section headers next, body text smaller, labels smallest. "
+        "The most important numbers should visually stand out."
+    )
+    color_not_sole_indicator: bool = Field(
+        description="True if color is NOT the only way to convey meaning. "
+        "Trends should have text (+/-/up/down) in addition to red/green coloring "
+        "so the information is accessible to color-blind readers."
+    )
+
+
+_readability_judge = _judge.with_structured_output(ReadabilityGrade)
+
+
+def readability_evaluator(run, example):
+    """Visual eval: check font sizes, contrast, hierarchy, and color-blind accessibility."""
+    pngs_b64 = _current_slide_pngs_b64
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are reviewing financial presentation slides for readability and accessibility.\n"
+                "These slides will be shown to bank executives, projected on screens, and printed.\n\n"
+                "Check each slide for:\n\n"
+                "1. FONT SIZE: Is all text readable? Metric values should be large and bold. "
+                "Labels can be smaller but still legible. Flag any text that looks too small to read.\n"
+                "2. CONTRAST: Can you read all text clearly against its background? "
+                "Check especially: muted/gray text on light backgrounds, colored text on colored cards.\n"
+                "3. VISUAL HIERARCHY: Is it immediately obvious what the most important information is on each slide? "
+                "The eye should go to the key numbers first, then supporting details.\n"
+                "4. COLOR ACCESSIBILITY: For trend indicators (up/down/positive/negative), "
+                "is the meaning conveyed through text AND color, not color alone? "
+                "A color-blind person should be able to tell if a trend is positive or negative "
+                "from the text (+11.3%, -2.1%) or symbols (arrows) without relying on green/red."
+            ),
+        },
+    ]
+    for b64 in pngs_b64[:6]:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _readability_judge.invoke([{"role": "user", "content": content}])
+    checks = [
+        grade.font_sizes_adequate,
+        grade.contrast_sufficient,
+        grade.hierarchy_clear,
+        grade.color_not_sole_indicator,
+    ]
+    score = sum(checks) / len(checks)
+    return {"score": score, "comment": grade.reasoning}
+
+
+# -- 8. Regulatory & compliance visual checks ----------------------------------
+
+class RegulatoryVisualsGrade(BaseModel):
+    reasoning: str = Field(
+        description="Describe whether regulatory presentation standards are met"
+    )
+    dates_labeled: bool = Field(
+        description="True if every slide with financial data clearly shows the reporting period "
+        "or as-of date (e.g., 'Q4 2024', 'As of Dec 31, 2024')"
+    )
+    sources_attributed: bool = Field(
+        description="True if data sources are identified — either on individual slides "
+        "or on a sources/disclaimer slide"
+    )
+    no_misleading_presentation: bool = Field(
+        description="True if no data is presented in a misleading way — "
+        "no cherry-picked timeframes, no truncated axes that exaggerate changes, "
+        "no mixing of actual and projected data without labeling"
+    )
+    consistent_formatting: bool = Field(
+        description="True if number formatting is consistent across all slides — "
+        "same decimal places for percentages, same abbreviation style for currency "
+        "(all use $3.4M or all use $3,400,000, not a mix)"
+    )
+
+
+_regulatory_judge = _judge.with_structured_output(RegulatoryVisualsGrade)
+
+
+def regulatory_visuals_evaluator(run, example):
+    """Visual eval: check for date labeling, source attribution, and presentation standards
+    that banks require for board/regulatory presentations."""
+    pngs_b64 = _current_slide_pngs_b64
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are a compliance officer reviewing financial slides before they are presented "
+                "to the Board of Directors or submitted to regulators.\n\n"
+                "Check ALL slides for:\n\n"
+                "1. DATE LABELING: Every slide showing financial data MUST clearly indicate the reporting "
+                "period or as-of date. 'Q4 2024', 'FY2024', 'As of Dec 31, 2024' are all acceptable. "
+                "A title slide with just the date is sufficient if content slides reference it, "
+                "but undated data slides are a fail.\n"
+                "2. SOURCE ATTRIBUTION: Is it clear where the data came from? This can be footnotes, "
+                "a dedicated sources slide, or inline labels like 'Source: Core Banking GL'. "
+                "Not required on title slides, but any slide with data should have it or reference a source.\n"
+                "3. NO MISLEADING PRESENTATION: Look for truncated axes, cherry-picked date ranges, "
+                "mixing of actual and projected data without clear labeling, or any other presentation "
+                "technique that could mislead the reader about financial performance.\n"
+                "4. CONSISTENT FORMATTING: Are numbers formatted the same way across all slides? "
+                "Percentages should all use the same precision (24.6% everywhere, not 24.6% on one slide "
+                "and 25% on another). Currency should use the same abbreviation style throughout."
+            ),
+        },
+    ]
+    for b64 in pngs_b64[:6]:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _regulatory_judge.invoke([{"role": "user", "content": content}])
+    checks = [
+        grade.dates_labeled,
+        grade.sources_attributed,
+        grade.no_misleading_presentation,
+        grade.consistent_formatting,
+    ]
+    score = sum(checks) / len(checks)
+    return {"score": score, "comment": grade.reasoning}
+
+
+# -- 9. Golden slide comparison (dataset attachments) --------------------------
+
+class GoldenSlideGrade(BaseModel):
+    reasoning: str = Field(
+        description="For each golden reference slide, compare it to the closest generated slide. "
+        "Describe what matches and what differs."
+    )
+    layout_similar: bool = Field(
+        description="True if the generated slides use a similar layout structure to the golden reference — "
+        "same general grid arrangement, similar card placement, comparable slide count"
+    )
+    data_coverage_matches: bool = Field(
+        description="True if the generated slides cover the same key metrics shown in the golden reference. "
+        "The exact numbers may differ but the same categories of data should be present."
+    )
+    design_consistent: bool = Field(
+        description="True if the generated slides follow the same design system as the golden reference — "
+        "same color scheme, font style, card styling, and brand treatment"
+    )
+
+
+_golden_judge = _judge.with_structured_output(GoldenSlideGrade)
+
+
+def golden_slide_evaluator(outputs: dict, attachments: dict, reference_outputs: dict) -> dict:
+    """Compare generated slides against golden reference images stored as dataset attachments.
+
+    Uses the LangSmith dataset attachments feature — golden PNGs are uploaded
+    with the dataset example and passed to the evaluator automatically via the
+    `attachments` parameter.
+    """
+    pngs_b64 = _current_slide_pngs_b64
+
+    if not attachments:
+        return {"score": 1.0, "comment": "No golden reference attached to this example — skipped"}
+    if not pngs_b64:
+        return {"score": 0, "comment": "No slides were generated to compare"}
+
+    golden_images = []
+    for name in sorted(attachments.keys()):
+        if attachments[name].get("mime_type", "").startswith("image/"):
+            reader = attachments[name]["reader"]
+            golden_b64 = base64.b64encode(reader.read()).decode()
+            golden_images.append((name, golden_b64))
+
+    if not golden_images:
+        return {"score": 1.0, "comment": "No image attachments found — skipped"}
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are comparing GENERATED financial slides against GOLDEN REFERENCE slides.\n\n"
+                f"There are {len(golden_images)} golden reference slide(s) and "
+                f"{len(pngs_b64)} generated slide(s).\n\n"
+                "The images below are labeled. Compare them and evaluate:\n"
+                "1. LAYOUT SIMILARITY: Do the generated slides use a similar grid layout, card placement, "
+                "and overall structure? They don't need to be pixel-identical, but the approach should match.\n"
+                "2. DATA COVERAGE: Do the generated slides cover the same key metrics and data categories "
+                "as the golden reference? Exact numbers may differ across runs.\n"
+                "3. DESIGN CONSISTENCY: Do both follow the same design system — color palette, typography, "
+                "card styling, trend indicator style?\n\n"
+                "--- GOLDEN REFERENCE SLIDES ---"
+            ),
+        },
+    ]
+
+    for name, b64 in golden_images[:4]:
+        content.append({"type": "text", "text": f"[Golden: {name}]"})
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    content.append({"type": "text", "text": "--- GENERATED SLIDES ---"})
+    for i, b64 in enumerate(pngs_b64[:4]):
+        content.append({"type": "text", "text": f"[Generated: slide {i+1}]"})
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    grade = _golden_judge.invoke([{"role": "user", "content": content}])
+    checks = [grade.layout_similar, grade.data_coverage_matches, grade.design_consistent]
+    score = sum(checks) / len(checks)
+    return {
+        "score": score,
+        "comment": f"Compared {len(golden_images)} golden vs {len(pngs_b64)} generated. {grade.reasoning}",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main — run experiments across 4 models with structured metadata
 # ---------------------------------------------------------------------------
@@ -652,6 +1124,12 @@ def main():
                 slide_quality_evaluator,
                 trajectory_evaluator,
                 assertion_evaluator,
+                overflow_overlap_evaluator,
+                chart_accuracy_evaluator,
+                data_integrity_evaluator,
+                readability_evaluator,
+                regulatory_visuals_evaluator,
+                golden_slide_evaluator,
             ],
             experiment_prefix=prefix,
             description=f"Financial slide agent eval — {model} (temp={temperature})",

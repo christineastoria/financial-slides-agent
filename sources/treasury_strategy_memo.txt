@@ -1,0 +1,77 @@
+MERIDIAN FINANCIAL GROUP — TREASURY STRATEGY MEMO
+To: CFO, Treasurer
+From: Head of Treasury Operations
+Date: January 10, 2025
+Re: 2025 Treasury Strategy and Liquidity Planning
+
+1. CURRENT CASH POSITION
+
+Total USD-equivalent cash: $89.42M across 7 banking relationships.
+Unencumbered cash: $84.15M (94% of total).
+
+Primary operating account (JPMorgan): $47.25M — sufficient for 6+ months of
+operating expenses at current burn rate. Recommend maintaining minimum $40M
+in this account as operating buffer.
+
+EMEA operations hold €18.01M across Barclays and Deutsche Bank. UK entity
+holds £4.89M at HSBC. APAC operations hold ¥1.245B at MUFG plus $3.45M at
+DBS Singapore.
+
+2. FX EXPOSURE AND HEDGING
+
+Net unhedged FX exposure: $12.8M. FX VaR (95%, 1-day): $420K.
+
+Current hedge ratios by currency pair:
+- EUR/USD: 78.5% hedged (target: 80%). Recommend adding €1M forward contract.
+- GBP/USD: 65.0% hedged (target: 75%). Gap exists due to timing of Q4 hedges
+  rolling off. Priority action: execute £2M in new forwards by January 31.
+- USD/JPY: 82.3% hedged (target: 80%). Within tolerance.
+- USD/CHF: 45.0% hedged (target: 60%). CHF exposure is relatively small but
+  the gap should be addressed. Q1 2025 maturity creates a natural window.
+
+3. INVESTMENT PORTFOLIO
+
+Total short-term investments: $88M. Weighted average yield: 5.32%.
+Duration: 0.34 years. Weighted average life: 98 days.
+
+Portfolio composition is appropriately conservative:
+- US Treasury Bills: $25M (28%) at 5.28% — risk-free anchor
+- Commercial Paper (MSFT, JNJ): $17.5M (20%) — A-1+ rated, highly liquid
+- Bank CDs (Citi): $15M (17%) — slightly higher yield at 5.45%
+- Money Market Fund: $18.5M (21%) — overnight liquidity
+- Repo Agreements: $12M (14%) — short-dated, collateralized
+
+RECOMMENDATION: As Fed rate cuts are expected in H2 2025, consider extending
+duration on 20-30% of the portfolio to lock in current yields. Suggest moving
+$15-20M from money market into 6-9 month Treasury notes.
+
+4. DEBT AND FUNDING
+
+Total debt outstanding: $168.4M. Weighted average cost: SOFR+168bps.
+
+Key facilities:
+- Revolving Credit (Syndicate): $100M committed, $35M drawn. $65M available.
+- Term Loan A: $50M fully drawn. Maturity: June 30, 2026. ACTION NEEDED:
+  Begin refinancing discussions by Q2 2025.
+- Term Loan B: $75M fully drawn. Maturity: December 2027.
+- LC Facility: $20M committed, $8.4M utilized.
+
+Covenant compliance (as of December 31, 2024):
+- Leverage ratio: 2.8x (limit: 4.0x) — comfortable headroom
+- Interest coverage: 8.2x (minimum: 3.0x) — strong
+
+5. LIQUIDITY RATIOS
+
+- LCR: 142.8% (regulatory minimum: 100%)
+- NSFR: 118.5% (regulatory minimum: 100%)
+- HQLA: $187.3M (Level 1: $142M, Level 2A: $32M, Level 2B: $13M)
+
+Liquidity position remains strong with adequate buffers above regulatory minimums.
+
+6. KEY ACTIONS FOR Q1 2025
+
+Priority 1: Execute GBP/USD hedges (£2M forwards) by January 31
+Priority 2: Review CHF hedging strategy
+Priority 3: Begin Term Loan A refinancing process
+Priority 4: Evaluate duration extension for investment portfolio
+Priority 5: Contingency funding plan review (annual requirement)
