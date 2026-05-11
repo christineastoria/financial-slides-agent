@@ -475,7 +475,9 @@ RULES:
 - Use cols-4 grids wherever possible. More data = better.
 - Include data from overlapping sources on the SAME slide when they cover the same topic
 - Format currency as $3.4M, percentages as 24.6%
-- Show trends (up/down/flat) when comparing time periods
+- Show trends (up/down/flat) ONLY when you have data from multiple time periods to compare. Never invent QoQ or YoY growth percentages from single-period data.
+- Never compute blended or averaged metrics in your head — always use run_financial_calculation for any derived figures.
+- Do not add qualitative judgments (e.g., "Strong Position", "Well Above Min") unless they are directly stated in tool output.
 - When in doubt, add MORE data, not less
 """
 
